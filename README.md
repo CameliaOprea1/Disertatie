@@ -6,8 +6,7 @@ https://www.sciencedirect.com/science/article/pii/S2405896321008144?ref=pdf_down
 
 https://medium.com/search?q=Study+of+urban-traffic+congestion
 
-https://github.com/rajesvariparasa/spatial-routing-libraries-and-
-services/blob/main/Routing_Libraries_Services.ipynb
+https://github.com/rajesvariparasa/spatial-routing-libraries-and-services/blob/main/Routing_Libraries_Services.ipynb
 
 https://github.com/SuperbTUM/Real-time-New-York-City-Traffic-Heatmap/tree/main
 
