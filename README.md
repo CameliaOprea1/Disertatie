@@ -38,3 +38,5 @@ https://cambridge-intelligence.com/keylines-faqs-social-network-analysis/
 https://snap.stanford.edu/class/cs224w-2017/projects/cs224w-11-final.pdf
 
 https://networkx.org/documentation/stable/reference/algorithms/centrality.html
+
+https://sci-hub.se/https://doi.org/10.1016/j.physa.2017.02.069
