@@ -2,8 +2,7 @@
 
 name: Python script
 
-# Controls when the action will run. Workflow runs when manually triggered using the UI
-# or API.
+# Controls when the action will run. Workflow runs when manually triggered using the UI or API.
 on:
   workflow_dispatch:
 
@@ -16,7 +15,9 @@ jobs:
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-    - uses: actions/checkout@v3
-    # Runs a single command using the runners shell
-    - name: Run a python script
-      run: python .github/workflows/example.py
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        
+      # Runs a single command using the runners shell
+      - name: Run a python script
+        run: python .github/workflows/example.py
