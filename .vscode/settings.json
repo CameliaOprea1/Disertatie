@@ -1,0 +1,7 @@
+{
+    "python.analysis.extraPaths": [
+        "./Google_APIS_Request",
+        "./Datasets_Administration_Creation",
+        "./Osmnx_graph_maniupulation"
+    ]
+}
