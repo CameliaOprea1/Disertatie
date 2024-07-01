@@ -8,16 +8,18 @@ import requests
 import numpy as np
 from sklearn.preprocessing import LabelEncoder
 from shapely.geometry import Point, LineString
-from polyline import decode as decode_polyline
 import ast
 from geopy.distance import geodesic
-
+import aiohttp
+import nest_asyncio
+import asyncio
 
 # Constants
 
 CSV_FILENAME_PREFIX = "live_data_for_genetic_alg_"
+DIST_MATRIX_FILENAME_PREFIX = "distance_matrix_data_"
 ###GOOGLE API
-YOUR_API_KEY = 'AIzaSyBlraUkOF9TgoWLZKqj14SbXHyt18_ecC0'
+YOUR_API_KEY = 'AIzaSyBfF-hqY2s2EnowovqFi8QuvMCcRSQtDbQ'
 #'AIzaSyARYh2obFP1JK6PEcDT7q0ASA_e5k-kgB0'
 #####WEATHER
 url_openWeather = f"https://api.openweathermap.org/data/2.5/weather?lat={45.64861}&lon={25.60613}&appid=3f116979dae9f6daf340d900c87de197&units=metric"
@@ -26,6 +28,9 @@ apiKeytraffic ='XhCMZTMAH9SFF0HGGj5Qd99dSAWvUIvt'
 # Get the current date
 current_date = datetime.now().strftime("%Y-%m-%d")
 csv_filename = f"{CSV_FILENAME_PREFIX}{current_date}.csv"
+dist_matrix_filename = f"{DIST_MATRIX_FILENAME_PREFIX}{current_date}.csv"
+coordinates_filename = f"coordinates_{current_date}.csv"
+ml_dataset_filename = "RawData_live_responses.csv"
 batch_size = 10  # Define the batch size
 label_encoder = LabelEncoder()
 holiday_dates = {
@@ -41,79 +46,51 @@ holiday_dates = {
 for holiday, date in holiday_dates.items():
     holiday_dates[holiday] = pd.to_datetime(date).date()
 
-def get_geograph_coordonates_from_osmid(nodes_geographical_df,osmid_node):
-    ''' 
-    from osmid --> (lat, lng) 
-    '''
+nest_asyncio.apply()
+
+# Helper functions
+def get_geograph_coordinates_from_osmid(nodes_geographical_df, osmid_node):
+    ''' from osmid --> (lat, lng) '''
     return nodes_geographical_df.loc[osmid_node].y, nodes_geographical_df.loc[osmid_node].x
 
 def transform_to_coordinates(nodes_df, chromosome):
-    ''' 
-    from [osmid_1,..., omsid_n] --> [(lat_1, lng_1),...,(lat_n, lng_n)] 
-    '''
-    return [get_geograph_coordonates_from_osmid(nodes_df, node) for node in chromosome]
+    ''' from [osmid_1,..., omsid_n] --> [(lat_1, lng_1),...,(lat_n, lng_n)] '''
+    return [get_geograph_coordinates_from_osmid(nodes_df, node) for node in chromosome]
 
 def format_coordinates_for_api(coordinates):
-    ''' 
-    from [(lat_1, lng_1),...,(lat_n, lng_n)] --> 'lat_1,lng_1|...|lat_n, lng_n'
-    '''
+    ''' from [(lat_1, lng_1),...,(lat_n, lng_n)] --> 'lat_1,lng_1|...|lat_n, lng_n' '''
     return "|".join([f"{lat},{lng}" for lat, lng in coordinates])
 
-def fetch_snapped_points(coordinates, api_key):
-    '''
-    Get the correct geograph coordinates from lat_1, lng_1),...,(lat_n, lng_n) provided by OSMN module
-    '''
+async def fetch_snapped_points(session, coordinates, api_key):
+    ''' Get the correct geographical coordinates from lat_1, lng_1),...,(lat_n, lng_n) provided by OSMN module '''
     path = format_coordinates_for_api(coordinates)
     url = f"https://roads.googleapis.com/v1/snapToRoads?path={path}&key={api_key}"
-    response = requests.get(url)
-    if response.status_code == 200:
-        return response.json()["snappedPoints"]
-    else:
-        print("Request to Google Roads API failed with status code:", response.status_code)
-        return []
-    
+    async with session.get(url) as response:
+        if response.status == 200:
+            return await response.json()
+        else:
+            print("Request to Google Roads API failed with status code:", response.status)
+            return []
 
-def get_distance_matrix(origins, destinations, api_key):
-    # Google Distance Matrix API URL, matrix of (len(origins), len(destinations))
+async def fetch_distance_matrix(session, origins, destinations, api_key):
     url = "https://maps.googleapis.com/maps/api/distancematrix/json"
-
-    # Parameters for the request
     params = {
         "departure_time": "now",
         "origins": "|".join([f"{origin[0]},{origin[1]}" for origin in origins]),
         "destinations": "|".join([f"{dest[0]},{dest[1]}" for dest in destinations]),
         "key": api_key,
     }
+    async with session.get(url, params=params) as response:
+        return await response.json()
 
-    # Make the request
-    response = requests.get(url, params=params)
-    data = response.json()
-    return data
+async def fetch_weather(session, url_open_weather):
+    async with session.get(url_open_weather) as response:
+        return await response.json()
 
-def get_metrics_from_response(data1):# Extract distances and durations
-    rows = data1["rows"]
-    distances = []
-    durations = []
-    durations_in_traffic = []
-    for row in rows:
-            elements = row["elements"]
-            distances_row = [element["distance"]["value"] for element in elements]
-            durations_row = [element["duration"]["value"] for element in elements]
-            durations_in_traffic_row = [element["duration_in_traffic"]["value"] for element in elements]
-            distances.append(distances_row)
-            durations.append(durations_row)
-            durations_in_traffic.append(durations_in_traffic_row)
-    return distances, durations, durations_in_traffic
-
-def get_distance_matrices_for_batches(batches, api_key):
-    ''' There are cases in which len(coordinates) > 10(max nr of destinations/origins from a request)
-    '''
-    distance_matrices = []
-    for batch in batches:
-        origins, destinations = batch
-        distance_matrix = get_distance_matrix(origins, destinations, api_key)
-        distance_matrices.append(distance_matrix)
-    return distance_matrices
+async def fetch_traffic_incidents(session, bounding_box, api_key_traffic):
+    url = f"https://api.tomtom.com/traffic/services/4/incidentDetails/s3/{bounding_box}/22/-1/json?key={api_key_traffic}&projection=EPSG4326&originalPosition=true"
+    async with session.get(url) as response:
+        return await response.json()
 
 
 def create_batches(coordinates, batch_size):
@@ -124,87 +101,7 @@ def create_batches(coordinates, batch_size):
         batches.append((origins_batch, destinations_batch))
     return batches
 
-
-def process_bounds(bounds_dict):
-    """
-    Process the bounds data contained in a dictionary retrieved from directions API.
-
-    Args:
-    bounds_dict (dict): A dictionary containing bounds data.
-
-    Returns:
-    list: A list containing the formatted bounds data.
-    """
-    # Extract latitude and longitude coordinates for northeast and southwest points
-    northeast_lat = bounds_dict['northeast']['lat']
-    northeast_lng = bounds_dict['northeast']['lng']
-    southwest_lat = bounds_dict['southwest']['lat']
-    southwest_lng = bounds_dict['southwest']['lng']
-
-    # Create a list containing the formatted bounds data
-    bounds_data = [['northeast', northeast_lat, northeast_lng], ['southwest', southwest_lat, southwest_lng]]
-
-    return bounds_data
-
-def process_legs(route_info):
-    """
-    Create a DataFrame containing information about a route retrieved from Directions API.
-
-    Args:
-    route_info (dict): Information about the route.
-
-    Returns:
-    pd.DataFrame: DataFrame containing the route information.
-    """
-    data = {
-        'distance_text': route_info['distance']['text'],
-        'distance_value': route_info['distance']['value'],
-        'duration_text': route_info['duration']['text'],
-        'duration_in_traffic': route_info['duration_in_traffic']['text'],
-        'duration_value': route_info['duration']['value'],
-        'start_address': route_info['start_address'],
-        'start_location_lat': route_info['start_location']['lat'],
-        'start_location_lng': route_info['start_location']['lng'],
-        'end_address': route_info['end_address'],
-        'end_location_lat': route_info['end_location']['lat'],
-        'end_location_lng': route_info['end_location']['lng']
-    }
-
-    return pd.Series(data)
-
-
-def extract_weather(df_merged, row_title='weather_json'):
-    # Define lists to store weather information
-    weather_descriptions = []
-    main_weather_conditions = []
-    cloud_cover_percentages = []
-
-    # Loop through each row of the DataFrame
-    for index, row in df_merged.iterrows():
-        parsed_data = ast.literal_eval(row[row_title])
-
-        # Access specific information for each row
-        weather_description = parsed_data['weather'][0]['description']
-        main_weather_condition = parsed_data['weather'][0]['main']
-        cloud_cover_percentage = parsed_data['clouds']['all']
-        
-        # Append the information to the respective lists
-        weather_descriptions.append(weather_description)
-        main_weather_conditions.append(main_weather_condition)
-        cloud_cover_percentages.append(cloud_cover_percentage)
-
-    # Create a DataFrame from the extracted weather information
-    weather_df = pd.DataFrame({
-        'weather_description': weather_descriptions,
-        'main_weather_condition': main_weather_conditions,
-        'cloud_cover_percentage': cloud_cover_percentages
-    })
-
-    return weather_df
-
-
-################################### These function are used for the live response
-
+    
 def calculate_bounding_box(coordinates):
 
     ''' Disatnce matrix API does not have the bounds of a route which is needed for the live traffic incidents
@@ -241,45 +138,65 @@ def format_bbox(bounding_box):
     bbox_string = f"{ne_lat},{ne_lng},{sw_lat},{sw_lng}"
     return bbox_string
 
-def process_response(coordinates,url_openWeather,apiKeytraffic,api_key = YOUR_API_KEY):
-    ''' Method for constructing the needed datyaframe with the columns containing: google API, weather API, live traffic incidents API
-    '''
-    #origins=coordinates[:-1] #need to test it later on
-    #destinations=coordinates[1:]
-    response_weather = requests.get(url_openWeather).json()
-    bounding_box = calculate_bounding_box(coordinates)
-    bounding_box = format_bbox(bounding_box)
-    urltraffic = f"https://api.tomtom.com/traffic/services/4/incidentDetails/s3/{bounding_box}/22/-1/json?key={apiKeytraffic}&projection=EPSG4326&originalPosition=true"
-    response_traffic=  requests.get(urltraffic).json()
-    batches = create_batches(coordinates, batch_size)
-    distance_matrices = get_distance_matrices_for_batches(batches, api_key)
+def process_bounds(bounds_dict):
+    """
+    Process the bounds data contained in a dictionary retrieved from directions API.
 
-    matrices_json = json.dumps(distance_matrices)
-    matrices_json = {'matrices_json': matrices_json}
-    matrices_json_df = pd.DataFrame(matrices_json, index=[0])
+    Args:
+    bounds_dict (dict): A dictionary containing bounds data.
 
-    #distance_matrices_df = pd.DataFrame(distance_matrices)
-    weather_json = json.dumps(response_weather)
-    # Construct DataFrame for weather
-    weather_data = {'weather_json': weather_json}
-    weather_df = pd.DataFrame(weather_data, index=[0])
+    Returns:
+    list: A list containing the formatted bounds data.
+    """
+    # Extract latitude and longitude coordinates for northeast and southwest points
+    northeast_lat = bounds_dict['northeast']['lat']
+    northeast_lng = bounds_dict['northeast']['lng']
+    southwest_lat = bounds_dict['southwest']['lat']
+    southwest_lng = bounds_dict['southwest']['lng']
+
+    # Create a list containing the formatted bounds data
+    bounds_data = [['northeast', northeast_lat, northeast_lng], ['southwest', southwest_lat, southwest_lng]]
+
+    return bounds_data
 
 
-    response_traffic_json = json.dumps(response_traffic)
-        # Construct DataFrame for weather
-    response_traffic = {'traffic_json': response_traffic_json}
-    traffic_incidents_df = pd.DataFrame(response_traffic, index=[0])
+def extract_weather(df_merged, row_title='weather_json'):
+    weather_descriptions, main_weather_conditions, cloud_cover_percentages = [], [], []
+    for _, row in df_merged.iterrows():
+        parsed_data = json.loads(row[row_title])
+        weather_description = parsed_data['weather'][0]['description']
+        main_weather_condition = parsed_data['weather'][0]['main']
+        cloud_cover_percentage = parsed_data['clouds']['all']
+        weather_descriptions.append(weather_description)
+        main_weather_conditions.append(main_weather_condition)
+        cloud_cover_percentages.append(cloud_cover_percentage)
+    weather_df = pd.DataFrame({
+        'weather_description': weather_descriptions,
+        'main_weather_condition': main_weather_conditions,
+        'cloud_cover_percentage': cloud_cover_percentages
+    })
+    return weather_df
 
-    # Combine all DataFrames horizontally
-    new_entry = pd.concat([matrices_json_df, weather_df, traffic_incidents_df], axis=1)
 
-    # Add timestamp column
-    new_entry['timestamp'] = datetime.now()
+def get_metrics_from_response(data1):# Extract distances and durations
+    rows = data1["rows"]
+    distances = []
+    durations = []
+    durations_in_traffic = []
+    for row in rows:
+            elements = row["elements"]
+            distances_row = [element["distance"]["value"] for element in elements]
+            durations_row = [element["duration"]["value"] for element in elements]
+            durations_in_traffic_row = [element["duration_in_traffic"]["value"] for element in elements]
+            distances.append(distances_row)
+            durations.append(durations_row)
+            durations_in_traffic.append(durations_in_traffic_row)
+    return distances, durations, durations_in_traffic
 
-    return new_entry
 
 def preprocess_distance_matrices(df, row_name='matrices_json'):
-    ''' In this method it is calculated the total time in traffic, average traffic, and distance for my list of snapped coordinates that forms the path
+    ''' 
+    In this method it is calculated the total time in traffic, average traffic, and distance for my list of snapped coordinates that forms the path
     '''
     distance_matrices = json.loads(df[row_name].iloc[0])
 
@@ -313,7 +230,6 @@ def preprocess_distance_matrices(df, row_name='matrices_json'):
     
     return total_distance, total_time_in_traffic, total_average_time
 
-
 def get_traffic_incidents_categorical(df, coordinates):
     ''' Method for retrieving the relevant information from traffic incidnts API
     '''
@@ -343,7 +259,6 @@ def get_traffic_incidents_categorical(df, coordinates):
         return 1  # Return 1 if there are affected incidents
     else:
         return 0  # Return 0 if there are no affected incidents
-    
 
 
 # Function to check if a given timestamp is a holiday
@@ -362,55 +277,145 @@ def categorize_hour(hour):
         return 2
     else:
         return 3
+    
+async def get_distance_matrices_for_batches(session, batches, api_key):
+    tasks = []
+    for batch in batches:
+        origins, destinations = batch
+        task = fetch_distance_matrix(session, origins, destinations, api_key)
+        tasks.append(task)
+        
+    distance_matrices = await asyncio.gather(*tasks)
+    return distance_matrices
 
-def get_google_dist_matrix_response_and_preprocess(nodes_geographical_df,chr):
+async def process_route_information(chromosome, nodes_geographical_df, session, api_key = YOUR_API_KEY, weather_url = url_openWeather, traffic_key =  apiKeytraffic):
+    # Transform chromosome into coordinates
+    coordinates = transform_to_coordinates(nodes_geographical_df, chromosome)
 
-    ''' Wrapping all the methods empoyed for retrieving and preprocess Distance matrix API, weather API, and traffic incidents API
+    # Fetch snapped points asynchronously
+    snapped_points_tasks = [fetch_snapped_points(session,coordinates,api_key)]
+    snapped_points_results = await asyncio.gather(*snapped_points_tasks)
+    snapped_coordinates =  [(item['location']['latitude'], item['location']['longitude']) for item in snapped_points_results[0]["snappedPoints"]]
+
+
+    # Divide snapped points into batches for distance matrix calculation
+    batches = create_batches(snapped_coordinates, batch_size)
+
+    # Fetch distance matrices for each batch asynchronously
+    
+    distance_matrix_results = await get_distance_matrices_for_batches(session, batches, api_key)
+
+     # Fetch weather and traffic information
+    weather_task = fetch_weather(session, weather_url)
+    bounding_box = calculate_bounding_box(coordinates)
+    traffic_task = fetch_traffic_incidents(session, format_bbox(bounding_box), traffic_key)
+
+    # Wait for all tasks to complete
+    weather_result = await weather_task
+    traffic_result = await traffic_task
+
+    # Serialize each response as JSON
+    #snapped_points_json = json.dumps(snapped_points_results)
+    distance_matrix_json = json.dumps(distance_matrix_results)
+    weather_json = json.dumps(weather_result)
+    traffic_json = json.dumps(traffic_result)
+
+    dict_response = {
+        "snapped_points": snapped_points_results,
+        "matrices_json": distance_matrix_json,
+        "weather_json": weather_json,
+        "traffic_json": traffic_json
+    }
+
+    return dict_response
+
+async def get_google_dist_matrix_response_and_preprocess(nodes_geographical_df,chromosome,api_key, weather_url, traffic_key, session):
+
+    ''' 
+    Wrapping all the methods empoyed for retrieving and preprocess Distance matrix API, weather API, and traffic incidents API
     '''
-    # Step 1: Transform coordinates
-    coordinates = transform_to_coordinates(nodes_geographical_df, chr)
-    
-    # Step 2: Fetch snapped points
-    snapped_points = fetch_snapped_points(coordinates, YOUR_API_KEY)
-    coordinates = [(item['location']['latitude'], item['location']['longitude']) for item in snapped_points]
-    
-    # Step 3: Process response
-    df = process_response(coordinates, url_openWeather, apiKeytraffic)
+    async with aiohttp.ClientSession() as session:
+        route_info_dict = await process_route_information(chromosome, nodes_geographical_df, session, api_key, weather_url, traffic_key)
+        coordinates = [(item['location']['latitude'], item['location']['longitude']) for item in route_info_dict["snapped_points"][0]["snappedPoints"]]
 
-    return df, coordinates
+        # Step 3: Process response
+        df = pd.DataFrame(route_info_dict)
+
+        return df, coordinates
 
 
-def predict_traffic_congestion(nodes_geographical_df,chr, model_pre_trained):
+async def predict_traffic_congestion(nodes_geographical_df,chromosome, model_pre_trained,session,api_key = YOUR_API_KEY, weather_url = url_openWeather, traffic_key = apiKeytraffic ):
+    async with aiohttp.ClientSession() as session:
+        df, coordinates = await get_google_dist_matrix_response_and_preprocess(nodes_geographical_df,chromosome,api_key, weather_url, traffic_key, session)
     
-    df, coordinates = get_google_dist_matrix_response_and_preprocess(nodes_geographical_df,chr)
-    
-    # Step 4: Preprocess distance matrices
-    df['fetched_coordinates'] = [coordinates]
-    df['distance_value'], df['duration_in_traffic_numeric'], df['duration_value'] = preprocess_distance_matrices(df, row_name='matrices_json')
-    
-    # Step 5: Compute average speed
-    df['intraffic_speed'] = 3.6 * (df['distance_value'] / df['duration_in_traffic_numeric'])  # in km/h
-    df['average_speed'] = 3.6 * (df['distance_value'] / df['duration_value'])  # in km/h
-    
-    df.to_csv('RawData_live_response'+str(coordinates[0])+'_'+str(coordinates[-1]) +'.csv')
+        # Step 4: Preprocess distance matrices
+        df['fetched_coordinates'] = [coordinates]
+        df['distance_value'], df['duration_in_traffic_numeric'], df['duration_value'] = preprocess_distance_matrices(df, row_name='matrices_json')
 
-    # Step 6: Extract features for machine learning
-    df_ml = pd.DataFrame()
-    df_ml['weather_data'] = extract_weather(df, row_title='weather_json')['weather_description']
-    df_ml['day_of_week'] = pd.to_datetime(df['timestamp'], errors='coerce').dt.day_name()
-    df_ml['holiday_data'] = pd.to_datetime(df['timestamp'], errors='coerce').apply(is_holiday)
-    df_ml['traffic_incidents'] = get_traffic_incidents_categorical(df, coordinates)
-    df_ml['intraffic_speed'] = df['intraffic_speed'].values
-    df_ml['average_speed'] = df['average_speed'].values
-    df_ml['distance_value'] = df['distance_value'].values
-    df_ml['time_of_day'] = pd.to_datetime(df['timestamp'], errors='coerce').dt.hour.apply(categorize_hour)
-    df_ml['hour'] = pd.to_datetime(df['timestamp'], errors='coerce').dt.hour
+        # Step 5: Compute average speed
+        df['intraffic_speed'] = 3.6 * (df['distance_value'] / df['duration_in_traffic_numeric'])  # in km/h
+        df['average_speed'] = 3.6 * (df['distance_value'] / df['duration_value'])  # in km/h
 
-    # Step 7: Encode categorical features
-    df_ml['day_of_week'] = label_encoder.fit_transform(df_ml['day_of_week'])
-    df_ml['weather_data'] = label_encoder.fit_transform(df_ml['weather_data'])
-    df_ml.to_csv('RawData_ml_response'+str(coordinates[0])+'_'+str(coordinates[-1]) +'.csv')
-    # Step 8: Make predictions
-    prediction = model_pre_trained.predict(df_ml)
-    
-    return prediction.tolist()[0], df['distance_value'].values, df['duration_in_traffic_numeric'].values
+        mode = 'a' if os.path.exists(ml_dataset_filename) else 'w'
+        with open(ml_dataset_filename, mode=mode, encoding='utf-8', newline='') as file:
+                writer = csv.writer(file)
+                if mode == 'w':
+                    # Write headers only if it's a new file
+                    writer.writerow(["chromosome", "initial_coordinates", "snapped_coordinates", "distance_matrix","weather","traffic"])
+                writer.writerow([chromosome, coordinates, df['fetched_coordinates'].iloc[0], df['matrices_json'].iloc[0], df['weather_json'].iloc[0], df['traffic_json'].iloc[0]])
+
+
+        # Step 6: Extract features for machine learning
+        df_ml = pd.DataFrame()
+        df['timestamp']  = datetime.now()
+        df['timestamp'] = df['timestamp'].dt.strftime('%Y-%m-%d %H:%M:%S')
+
+        df_ml['weather_data'] = extract_weather(df, row_title='weather_json')['weather_description']
+        df_ml['day_of_week'] = pd.to_datetime(df['timestamp'], errors='coerce').dt.day_name()
+        df_ml['holiday_data'] = pd.to_datetime(df['timestamp'], errors='coerce').apply(is_holiday)
+        df_ml['traffic_incidents'] = get_traffic_incidents_categorical(df, coordinates)
+        df_ml['intraffic_speed'] = df['intraffic_speed'].values
+        df_ml['average_speed'] = df['average_speed'].values
+        df_ml['distance_value'] = df['distance_value'].values
+        df_ml['time_of_day'] = pd.to_datetime(df['timestamp'], errors='coerce').dt.hour.apply(categorize_hour)
+        df_ml['hour'] = pd.to_datetime(df['timestamp'], errors='coerce').dt.hour
+
+
+        day_mapping = {
+            'Monday': 0,
+            'Tuesday': 1,
+            'Wednesday': 2,
+            'Thursday': 3,
+            'Friday': 4,
+            'Saturday': 5,
+            'Sunday': 6
+        }
+        weather_mapping={
+        'scattered clouds': 0,
+        'broken clouds': 1,
+        'overcast clouds': 2,
+        'light rain': 3,
+        'moderate rain' : 4,
+        'heavy intensity rain': 5,
+        'few clouds': 6,
+        'clear sky':7
+
+        }
+        # Step 7: Encode categorical features
+        df_ml['day_of_week'] = df_ml['day_of_week'].map(day_mapping)
+        df_ml['weather_data'] = df_ml['weather_data'].map(weather_mapping)
+
+        # Define file name
+        second_filename = 'Prepocessed_ml_live_data.csv'
+        second_file_exists = os.path.isfile(second_filename)
+        selected_columns = ["weather_data", "day_of_week", "holiday_data", "traffic_incidents","intraffic_speed","average_speed","distance_value","time_of_day","hour"]
+        # Write data to second CSV
+        if not second_file_exists:
+            df_ml[selected_columns].to_csv(second_filename, mode='a', header=True, index=False)
+        else:
+            df_ml[selected_columns].to_csv(second_filename, mode='a', header=False, index=False)
+
+        # Step 8: Make predictions
+        prediction = model_pre_trained.predict(df_ml)
+
+        return prediction.tolist()[0], df['distance_value'].values, df['duration_in_traffic_numeric'].values

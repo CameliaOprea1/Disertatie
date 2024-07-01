@@ -8,6 +8,8 @@ from smart_mobility_utilities.common import randomized_search # type: ignore
 import pickle
 import sys
 import os
+import asyncio
+import aiohttp
 
 # Add the relevant directories to the system path
 script_dir = os.path.dirname(__file__)
@@ -19,7 +21,7 @@ sys.path.append(google_apis_path)
 sys.path.append(datasets_admin_path)
 sys.path.append(osmnx_graph_path)
 
-from get_processed_api_data import predict_traffic_congestion
+from get_processed_api_data import predict_traffic_congestion # Import the async script
 from datasets_creation import load_my_graph
 
 '''
@@ -38,8 +40,8 @@ url_openWeather = f"https://api.openweathermap.org/data/2.5/weather?lat={45.6486
 class GeneticAlgorithm:
    
 
-    def __init__(self, graph, successors_dict, source, destination, population_size=50,crossover_rate=0.8,X_test={}):
-        self.graph = graph
+    def __init__(self, successors_dict, source, destination, population_size=50,crossover_rate=0.8,X_test={}):
+        self.G =  G
         self.source = source
         self.destination = destination
         self.population_size = population_size
@@ -129,27 +131,19 @@ class GeneticAlgorithm:
         return child1, child2
     
     
-
-        
     def mutation(self, individual):
-        if len(individual) < 3:
+        if len(individual) < 4:
             # If the individual is too short to perform mutation, return it as is
             return individual
         
-        # Select node1 and ensure it's different from node2
-        node1 = random.choice(individual[1:-1])  # Exclude the start and end nodes
-        node2 = node1
-        while node2 == node1:
-            node2 = random.choice(individual[1:-1])  # Exclude the start and end nodes
-    
-        # Ensure node1 comes before node2 in the path
+        # Select node1 and node2 ensuring they are different and node1 comes before node2
+        node1, node2 = random.sample(individual[1:-1], 2)  # Exclude the start and end nodes
+        
         if individual.index(node1) > individual.index(node2):
             node1, node2 = node2, node1
     
-        # Perform mutation by replacing the subpath between node1 and node2
-        # with a new valid subpath
-        new_subpath = randomized_search(self.graph, node1, node2)
-        
+        # Perform mutation by replacing the subpath between node1 and node2 with a new valid subpath
+        new_subpath = randomized_search(self.G, node1, node2)
         # Find the indices of node1 and node2 in the individual
         index1 = individual.index(node1)
         index2 = individual.index(node2)
@@ -159,29 +153,34 @@ class GeneticAlgorithm:
             index1, index2 = index2, index1
     
         # Replace the subpath between index1 and index2 with the new subpath
-        individual[index1:index2 + 1] = new_subpath  # Adjust the replacement indices
-    
+        individual = individual[:index1] + new_subpath + individual[index2 + 1:]  # Adjust the replacement indices
         return individual
         
-
-    def fitnessEvaluation_google(self, individual):
+    async def main(self, individual, session):
+        # Prepare data
+        result = await predict_traffic_congestion(nodes_geographical_df, individual, model_pre_trained, session)  # Call async function
+        print(result[0],result[1].tolist()[0], result[2].tolist()[0])
+        return result
+    
+    async def fitnessEvaluation_google(self, individual):
+        async with aiohttp.ClientSession() as session:
         # Generate a unique identifier for the individual
-        individual_id = tuple(individual)
-    
-        # Check if individual's fitness has already been evaluated
-        if individual_id in self.distance_cache_for_individuals:
-            print('I did nbot send another api...')
-            # If the individual's data is already cached, return it
-            return self.distance_cache_for_individuals[individual_id]
-    
-        # If not cached, fetch the data from Google API or elsewhere
-        congestion_index, distance_value, duration_in_traffic_value = predict_traffic_congestion(nodes_geographical_df, individual, model_pre_trained)
-    
-        # Cache the data for future use
-        self.distance_cache_for_individuals[individual_id] = (congestion_index, distance_value.tolist()[0], duration_in_traffic_value.tolist()[0])
-    
-        # Return the fetched data
-        return (congestion_index, distance_value.tolist()[0], duration_in_traffic_value.tolist()[0])
+            individual_id = tuple(individual)
+
+            # Check if individual's fitness has already been evaluated
+            if individual_id in self.distance_cache_for_individuals:
+                print('I did not send another api...')
+                # If the individual's data is already cached, return it
+                return self.distance_cache_for_individuals[individual_id]
+
+            # If not cached, fetch the data from Google API or elsewhere
+            congestion_index, distance_value, duration_in_traffic_value = await self.main(individual, session)
+
+            # Cache the data for future use
+            self.distance_cache_for_individuals[individual_id] = (congestion_index, distance_value.tolist()[0], duration_in_traffic_value.tolist()[0])
+
+            # Return the fetched data
+            return (congestion_index, distance_value.tolist()[0], duration_in_traffic_value.tolist()[0])
 
 
     '''

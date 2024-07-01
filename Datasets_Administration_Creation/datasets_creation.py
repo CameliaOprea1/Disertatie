@@ -187,8 +187,8 @@ def load_today_saved_google_data(today_date_add_osmid):
     df_today= pd.read_csv('C:\\Users\\Camelia\\Desktop\\app\\Disertatie\\GeneticAlg\\'+name_day+'.csv')
     G, G_projected= load_my_graph()
 
-    df_today['origin_osmid'] = df_today.apply(lambda row: ox.nearest_nodes(G, row['start_location_lng'], row['start_location_lat']), axis=1)
-    df_today['destination_osmid'] = df_today.apply(lambda row: ox.nearest_nodes(G, row['end_location_lng'], row['end_location_lat']), axis=1)
+    df_today['origin_osmid'] = df_today.apply(lambda row: ox.distance.nearest_nodes(G, row['start_location_lng'], row['start_location_lat']), axis=1)
+    df_today['destination_osmid'] = df_today.apply(lambda row: ox.distance.nearest_nodes(G, row['end_location_lng'], row['end_location_lat']), axis=1)
     # Identify columns to drop
     cols_to_drop = [col for col in df_today.columns if col.startswith('Unnamed')]
     # Drop the identified columns
