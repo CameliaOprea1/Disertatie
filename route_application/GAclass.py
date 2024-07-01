@@ -158,10 +158,6 @@ class GeneticAlgorithm:
 
         
     def crossover(self, parent1, parent2):
-        #if random.random() > self.crossover_rate:
-        #    print('NO CROSSOVER')
-        #    return parent1, parent2  # No crossover
-        
         common_elements = list(self.find_common_elements(parent1, parent2))
 
         if not common_elements:
@@ -170,9 +166,6 @@ class GeneticAlgorithm:
             return parent1, parent2
 
         crossover_point_index = random.choice(common_elements)  # Ensure crossover point does not include source or destination
-
-        #print(crossover_point_index)
-        #cand rutele coincid pana intr-un punct nu are sens sa luam un nod care are aceeasi vecini in ambiik parinti==> facem swap de parinti, deci nu e crossover
         if (parent1[:parent1.index(crossover_point_index)] == parent2[parent2.index(crossover_point_index):]) and (parent2[:parent2.index(crossover_point_index)] == parent1[:parent1.index(crossover_point_index)]):
             print('Swapping produces same offsprings')
         else:
@@ -180,14 +173,6 @@ class GeneticAlgorithm:
             child1 = parent1[:parent1.index(crossover_point_index)] + parent2[parent2.index(crossover_point_index):]
             child2 = parent2[:parent2.index(crossover_point_index)] + parent1[parent1.index(crossover_point_index):]
         child1, child2 = parent1,parent2
-
-        #if (child1 == parent1 or child1==parent2 or child2==parent1 or child2==parent2):
-        #    print('Children are equal with parents')
-        #else:
-        #    print('NEW OffspringS')
-        #edge cases:
-        
-        #cand ruta rezultata contine de mai multe ori acelasi nod trebuie rectificata
         return child1, child2
 
         

@@ -80,29 +80,16 @@ class GAMO(object):
         fitnesses = await asyncio.gather(*[self.toolbox.evaluate(ind) for ind in invalid_ind])
         for ind, fit in zip(invalid_ind, fitnesses):
             ind.fitness.values = fit
-            #print(ind.fitness.values)
-        
-        # This is just to assign the crowding distance to the individuals
-        # no actual selection is done
-        #print(self.pop)
 
         self.pop = self.toolbox.select(self.pop, popsize) #pop + fitness
         self.hof.update(self.pop)  # best 10 chromosomes
         
         
         bestCh = tools.selBest(self.pop, 1)  # best chromosome
-        #print('AICI:',self.hof[0].fitness.valid) #OK AICI
-
-        #print(f"Best chromosome is: {bestCh[0]} and its fitness is: {self.toolbox.evaluate(bestCh[0])}")
-
-        ## Begin the generational process
         for gen in range(1, ngen + 1):
 
             offspring = self.toolbox.select(self.pop, popsize) #OK
-            #print('OFFSPRINGS:',offspring[0])
-            # Vary the population by cloning the selected individuals
             offspring = [self.toolbox.clone(individual) for individual in offspring]
-            #print('AICI:',offspring[0].fitness.valid)
 
             # CROSSOVER
             for i in range(1, len(offspring), 2):

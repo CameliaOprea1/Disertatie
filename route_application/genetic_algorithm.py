@@ -9,16 +9,13 @@ import asyncio
 import nest_asyncio
 import math
 
-# Load the graph only once to avoid redundant operations
 G, G_projected= load_my_graph()
 # Convert graphs to GeoDataFrames
 nodes, edges = ox.graph_to_gdfs(G)
 nodes_cartesian, edge_cartesian = ox.graph_to_gdfs(G_projected)
-print(len(G.nodes))
-# Specify the filename
 filename = "C:/Users/Camelia/Desktop/my_django_project/route_application/successors_dictionary.pkl"
 
-# Load the dictionary from the file
+
 with open(filename, 'rb') as f:
     successors_dict = pickle.load(f)
 
@@ -39,7 +36,6 @@ async def run_gamo(origin, destination, training_period, road_type,result_type):
 
 def find_optimal_route(origin, destination, training_period, road_type, result_type):
     route = ox.shortest_path(G_projected, origin, destination, weight="length")
-
     # Get the actual route as a GeoDataFrame of edges
     route_gdf = ox.routing.route_to_gdf(G_projected, route)
     origin_geograph = (nodes.loc[origin].y,nodes.loc[origin].x)
@@ -47,10 +43,6 @@ def find_optimal_route(origin, destination, training_period, road_type, result_t
 
     print(route_gdf['length'].sum())
     print(origin_geograph, destination_geograph)
-
-    ###ga = GeneticAlgorithm(G, successors_dict, source=origin, destination=destination)
-    ###gd = GAMO(G, successors_dict, origin, destination,popsize=20)
-    ###best, fitnessOfBest = gd.run(ngen=8,logs_path="")
 
     best, fitnessOfBest = asyncio.run(run_gamo(origin, destination,training_period, road_type, result_type))
 
@@ -61,7 +53,6 @@ def find_optimal_route(origin, destination, training_period, road_type, result_t
 
     congestion_mapping = {0: 'Low Congestion', 1: 'Moderate Congestion', 2: 'High Congestion'}
     congestion_level = congestion_mapping[fitnessOfBest[0]]
-
     optimal_route = {
         'start_lat': origin_geograph[0],
         'start_lng': origin_geograph[1],
@@ -70,7 +61,7 @@ def find_optimal_route(origin, destination, training_period, road_type, result_t
         'path': route_gdf_geographical_GA,
         'distance': fitnessOfBest[1] / 1000,  # Distance in km
         'duration': fitnessOfBest[2],  # Exact duration in seconds
-        'congestion_level': congestion_level  # Example data
+        'congestion_level': congestion_level
     }
 
     #optimal_route = {
@@ -78,10 +69,10 @@ def find_optimal_route(origin, destination, training_period, road_type, result_t
     #    'start_lng': origin_geograph[1],
     #    'end_lat': destination_geograph[0],
     #    'end_lng': destination_geograph[1],
-    #    'path': route_gdf.to_crs(epsg=4326), # Assuming EPSG 4326 is WGS84,
+    #    'path': route_gdf.to_crs(epsg=4326),
     #    'distance': 1,  # Distance in km
     #    'duration': 1,  # Estimated duration in minutes
-    #    'congestion_level': 'Low Congestion'  # Example data
+    #    'congestion_level': 'Low Congestion'
     #}
 
     return optimal_route
