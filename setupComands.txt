@@ -1,0 +1,38 @@
+python -m venv routingapp --> creez venv
+routingapp\Scripts\activate -->  activez env virtual
+django-admin startproject my_routingapp --> creez proiectul django
+(routingapp) C:\Users\Camelia>cd routingapp
+
+(routingapp) C:\Users\Camelia\routingapp>pip freeze > requirements.txt
+pastrez config-urile cu care am crear proiectul django
+
+
+run Server:
+python3 manage.py runserver
+
+262799397
+2340332524
+
+355994503
+2046127341
+
+
+
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBlraUkOF9TgoWLZKqj14SbXHyt18_ecC0&libraries=places"></script>
+
+
+
+# Navigate to your local repository
+cd path/to/your/local/repo
+
+# Check remotes
+git remote -v
+
+# If 'origin' is not listed, add the remote
+git remote add origin https://github.com/CameliaOprea1/Disertatie.git
+
+# Amend the last commit message
+git commit --amend -m "New commit message"
+
+# Force push the changes to the remote repository
+git push origin branch-name --force

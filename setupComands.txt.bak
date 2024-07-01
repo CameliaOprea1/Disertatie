@@ -1,0 +1,11 @@
+python -m venv routingapp --> creez venv
+routingapp\Scripts\activate -->  activez env virtual
+django-admin startproject my_routingapp --> creez proiectul django
+(routingapp) C:\Users\Camelia>cd routingapp
+
+(routingapp) C:\Users\Camelia\routingapp>pip freeze > requirements.txt
+pastrez config-urile cu care am crear proiectul django
+
+
+run Server:
+python3 manage.py runserver
