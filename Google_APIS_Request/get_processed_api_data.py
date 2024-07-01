@@ -19,8 +19,7 @@ import asyncio
 CSV_FILENAME_PREFIX = "live_data_for_genetic_alg_"
 DIST_MATRIX_FILENAME_PREFIX = "distance_matrix_data_"
 ###GOOGLE API
-YOUR_API_KEY = 'AIzaSyBfF-hqY2s2EnowovqFi8QuvMCcRSQtDbQ'
-#'AIzaSyARYh2obFP1JK6PEcDT7q0ASA_e5k-kgB0'
+YOUR_API_KEY = 
 #####WEATHER
 url_openWeather = f"https://api.openweathermap.org/data/2.5/weather?lat={45.64861}&lon={25.60613}&appid=3f116979dae9f6daf340d900c87de197&units=metric"
 ###TRAFFIC INCIDENTS
